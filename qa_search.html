@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
-  <title>期刊 QA 搜尋</title>
+  <title>期刊 QA 搜尋（樹狀索引版）</title>
 
   <!-- xlsx.js：用來讀取 Excel -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -154,120 +154,104 @@
       box-shadow: 0 4px 12px rgba(0,0,0,0.04);
     }
 
-    /* 年度 / 季別 標題 */
+    /* === 樹狀索引樣式 === */
+
+    .year-node {
+      margin-top: 6px;
+    }
+
+    .tree-header {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 6px;
+      border-radius: 6px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .tree-header:hover {
+      background: #e5e7eb;
+    }
+
+    .tree-toggle-icon {
+      font-size: 11px;
+      width: 14px;
+      text-align: center;
+      color: #4b5563;
+    }
+
     .year-header {
-      margin-top: 18px;
-      margin-bottom: 4px;
-      font-size: 18px;
       font-weight: 700;
+      font-size: 15px;
       color: #111827;
+    }
+
+    .year-children {
+      margin-left: 18px;
+      margin-top: 2px;
+    }
+
+    .quarter-node {
+      margin-top: 2px;
     }
 
     .quarter-header {
-      margin-left: 6px;
-      margin-top: 8px;
-      margin-bottom: 4px;
-      font-size: 14px;
       font-weight: 600;
-      color: #374151;
+      font-size: 14px;
+      color: #1f2933;
     }
 
-    /* 卡片縮排，顯示層次 */
-    .qa-card {
-      margin-left: 16px;
-      background: #fff;
-      border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
-      overflow: hidden;
-      border: 1px solid #e5e7eb;
-      transition: box-shadow 0.15s, border-color 0.15s, transform 0.05s;
+    .quarter-children {
+      margin-left: 18px;
+      padding-left: 8px;
+      border-left: 1px dashed #d1d5db;
+      margin-top: 2px;
     }
 
-    .qa-card.active {
-      border-color: #2563eb;
-      box-shadow: 0 6px 18px rgba(37, 99, 235, 0.2);
-      transform: translateY(-1px);
+    .title-item {
+      margin: 2px 0;
     }
 
-    .qa-header {
-      padding: 10px 14px;
-      background: #f9fafb;
+    .title-line {
       display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 10px;
+      flex-direction: column;
+      padding: 2px 4px;
+      border-radius: 6px;
       cursor: pointer;
     }
 
-    .qa-header-main {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
+    .title-line:hover {
+      background: #f3f4f6;
     }
 
-    .qa-title {
-      font-size: 15px;
-      font-weight: 600;
+    .title-main {
+      font-size: 14px;
       color: #111827;
     }
 
-    .qa-meta {
+    .title-meta {
+      font-size: 12px;
+      color: #6b7280;
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
-      font-size: 12px;
-      color: #6b7280;
+      margin-top: 1px;
     }
 
-    .qa-meta span {
+    .title-meta span {
       display: inline-flex;
       align-items: center;
       gap: 4px;
     }
 
-    .qa-keywords {
-      font-size: 12px;
-      color: #4b5563;
-    }
-
-    .qa-toggle-icon {
-      font-size: 16px;
-      color: #6b7280;
-      flex-shrink: 0;
-      margin-top: 2px;
-    }
-
-    .qa-body {
-      overflow: hidden;
-      max-height: 0;
-      padding: 0 14px;
-      border-top: 1px solid #e5e7eb;
-      transition: max-height 0.22s ease, padding-top 0.22s ease, padding-bottom 0.22s ease;
-    }
-
-    .qa-card.active .qa-body {
-      padding-top: 10px;
-      padding-bottom: 12px;
-    }
-
-    .qa-field {
-      margin-bottom: 6px;
-      font-size: 14px;
-    }
-
-    .qa-field label {
-      display: inline-block;
-      min-width: 70px;
-      font-weight: 600;
-      color: #374151;
-    }
-
-    .qa-field pre,
-    .qa-field div {
-      display: inline;
-      white-space: pre-wrap;
-      word-break: break-word;
-      font-family: inherit;
+    .title-detail {
+      margin: 3px 0 6px 18px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid #e5e7eb;
+      background: #f9fafb;
+      font-size: 13px;
     }
 
     .qa-section-title {
@@ -279,11 +263,11 @@
     }
 
     .qa-section-text {
-      font-size: 14px;
+      font-size: 13px;
       color: #111827;
       white-space: pre-wrap;
       word-break: break-word;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
     }
 
     .highlight {
@@ -293,11 +277,6 @@
     }
 
     @media (max-width: 640px) {
-      .qa-field label {
-        display: block;
-        margin-bottom: 2px;
-      }
-
       .toolbar {
         align-items: stretch;
       }
@@ -311,12 +290,12 @@
 </head>
 <body>
   <div class="app-container">
-    <h1>期刊 QA 搜尋系統</h1>
+    <h1>期刊 QA 搜尋系統（樹狀索引）</h1>
     <div class="subtitle">
       從 Excel 載入：Quarter / Year / Page / Title / Question / Answer / Note / Key。<br>
       🔍 關鍵字只在 <strong>Question / Answer</strong> 中做 AND 搜尋（多個關鍵字用空白分隔），並支援代碼去掉符號搜尋，例如：
       <code>COVID-19</code> 可用 <code>covid</code> / <code>covid19</code>；<code>U07.1</code> 可用 <code>u07.1</code> / <code>u071</code>。<br>
-      📄 會自動讀取「所有工作表」中有 Question/Answer 欄位的資料，合併後顯示。
+      📄 會自動讀取「所有工作表」中有 Question/Answer 欄位的資料，合併後依「年 → 季 → Title」做樹狀顯示。
     </div>
 
     <div class="toolbar">
@@ -346,7 +325,7 @@
       <div class="empty-message">
         請先選擇 Excel 檔，載入完成後即可輸入關鍵字搜尋。<br />
         關鍵字以空白分隔，<strong>只會在 Question / Answer</strong> 中做 AND 搜尋，並支援去掉符號的代碼搜尋。<br>
-        會自動從所有工作表中匯入合適欄位的資料。
+        結果會以「年 → 季 → Title」的樹狀結構呈現，點擊 Title 可展開詳細內容。
       </div>
     </div>
   </div>
@@ -494,7 +473,6 @@
             let countThisSheet = 0;
 
             dataRows.forEach((row) => {
-              // 判斷是不是整列真的都空白（連 Year/Quarter 都沒有）
               const allEmpty = row.every((cell) => String(cell).trim() === "");
               if (allEmpty) return;
 
@@ -550,7 +528,6 @@
           qaData = sortByYearQuarterPage(qaData);
           filteredData = qaData;
 
-          // 組合載入摘要文字
           const sheetInfoText = sheetSummaries
             .map(s => `${s.name}：${s.count} 筆（標題列第 ${s.headerRowIndex + 1} 行，匹配欄位 ${s.matchCount}）`)
             .join("； ");
@@ -592,7 +569,6 @@
         return;
       }
 
-      // 預先把關鍵字做 normalizeForSearch
       const keywordObjs = keywordsRaw.map((kw) => normalizeForSearch(kw));
 
       filteredData = qaData.filter((row) => {
@@ -600,17 +576,13 @@
         const qaText = `${row.Question || ""}  ${row.Answer || ""}`;
         const hay = normalizeForSearch(qaText);
 
-        // 每一個關鍵字都要 match（AND）
         return keywordObjs.every((k) => {
-          // 先看「原始小寫」是否包含，例如：covid vs covid-19
           if (k.raw && hay.raw.includes(k.raw)) return true;
-          // 再看「去掉符號」是否包含，例如：u071 vs u07.1、covid19 vs covid-19
           if (k.plain && hay.plain.includes(k.plain)) return true;
           return false;
         });
       });
 
-      // 結果仍依 Year / Quarter / Page 排一次
       filteredData = sortByYearQuarterPage(filteredData);
 
       const keywordForHighlight = keywordObjs.map(k => k.raw).filter(Boolean);
@@ -658,7 +630,17 @@
       return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     }
 
-    // 依 Year / Quarter 堆疊顯示 + 卡片
+    // 簡單切換顯示 block/none
+    function toggleBlock(elem, iconSpan) {
+      if (!elem) return;
+      const isHidden = elem.style.display === "none" || elem.style.display === "";
+      elem.style.display = isHidden ? "block" : "none";
+      if (iconSpan) {
+        iconSpan.textContent = isHidden ? "▼" : "▶";
+      }
+    }
+
+    // 依 Year / Quarter 堆疊顯示成樹狀
     function renderResults(data, keywords) {
       if (!data || data.length === 0) {
         resultsContainer.innerHTML =
@@ -669,110 +651,139 @@
       resultsContainer.innerHTML = "";
 
       let currentYear = null;
-      let currentQuarter = null;
+      let currentYearChildren = null;
 
-      data.forEach((row, index) => {
+      let currentQuarter = null;
+      let currentQuarterChildren = null;
+
+      data.forEach((row) => {
         const year = row.Year || "";
         const quarterRaw = row.Quarter || "";
 
-        // 年度變了 → 加 Year 標題
+        // === Year 節點 ===
         if (year !== currentYear) {
           currentYear = year;
-          currentQuarter = null;
+          currentQuarter = null; // 新年，季要重置
+
+          const yearNode = document.createElement("div");
+          yearNode.className = "year-node";
 
           const yearHeader = document.createElement("div");
-          yearHeader.className = "year-header";
-          yearHeader.textContent = year ? String(year) : "(未填 Year)";
-          resultsContainer.appendChild(yearHeader);
+          yearHeader.className = "tree-header year-header";
+
+          const yearIcon = document.createElement("span");
+          yearIcon.className = "tree-toggle-icon";
+          yearIcon.textContent = "▼"; // 預設展開
+
+          const yearLabel = document.createElement("span");
+          yearLabel.textContent = year ? String(year) : "(未填 Year)";
+
+          yearHeader.appendChild(yearIcon);
+          yearHeader.appendChild(yearLabel);
+
+          const yearChildren = document.createElement("div");
+          yearChildren.className = "year-children";
+          yearChildren.style.display = "block";
+
+          yearHeader.addEventListener("click", () => {
+            toggleBlock(yearChildren, yearIcon);
+          });
+
+          yearNode.appendChild(yearHeader);
+          yearNode.appendChild(yearChildren);
+          resultsContainer.appendChild(yearNode);
+
+          currentYearChildren = yearChildren;
+          currentQuarterChildren = null;
         }
 
-        // 季度變了 → 加 Quarter 標題
+        // === Quarter 節點 ===
         if (quarterRaw !== currentQuarter) {
           currentQuarter = quarterRaw;
 
-          const quarterHeader = document.createElement("div");
-          quarterHeader.className = "quarter-header";
+          const quarterNode = document.createElement("div");
+          quarterNode.className = "quarter-node";
 
+          const quarterHeader = document.createElement("div");
+          quarterHeader.className = "tree-header quarter-header";
+
+          const qIcon = document.createElement("span");
+          qIcon.className = "tree-toggle-icon";
+          qIcon.textContent = "▼"; // 預設展開
+
+          const qLabel = document.createElement("span");
           const qStr = String(quarterRaw || "").trim();
           if (/^\d+$/.test(qStr)) {
-            quarterHeader.textContent = `Q${qStr}`;
+            qLabel.textContent = `Q${qStr}`;
           } else if (qStr) {
-            quarterHeader.textContent = qStr;
+            qLabel.textContent = qStr;
           } else {
-            quarterHeader.textContent = "(未填 Quarter)";
+            qLabel.textContent = "(未填 Quarter)";
           }
 
-          resultsContainer.appendChild(quarterHeader);
+          quarterHeader.appendChild(qIcon);
+          quarterHeader.appendChild(qLabel);
+
+          const quarterChildren = document.createElement("div");
+          quarterChildren.className = "quarter-children";
+          quarterChildren.style.display = "block";
+
+          quarterHeader.addEventListener("click", () => {
+            toggleBlock(quarterChildren, qIcon);
+          });
+
+          quarterNode.appendChild(quarterHeader);
+          quarterNode.appendChild(quarterChildren);
+
+          if (currentYearChildren) {
+            currentYearChildren.appendChild(quarterNode);
+          } else {
+            resultsContainer.appendChild(quarterNode);
+          }
+
+          currentQuarterChildren = quarterChildren;
         }
 
-        // === 卡片本體 ===
-        const card = document.createElement("div");
-        card.className = "qa-card";
-        card.dataset.index = String(index);
+        // === Title 節點 ===
+        const titleItem = document.createElement("div");
+        titleItem.className = "title-item";
 
-        const header = document.createElement("div");
-        header.className = "qa-header";
+        const titleLine = document.createElement("div");
+        titleLine.className = "title-line";
 
-        const headerMain = document.createElement("div");
-        headerMain.className = "qa-header-main";
-
-        const titleEl = document.createElement("div");
-        titleEl.className = "qa-title";
-        titleEl.innerHTML =
+        const titleMain = document.createElement("div");
+        titleMain.className = "title-main";
+        titleMain.innerHTML =
           row.Title
             ? highlightText(row.Title, keywords)
             : "(無標題 Title)";
 
-        const metaEl = document.createElement("div");
-        metaEl.className = "qa-meta";
+        const meta = document.createElement("div");
+        meta.className = "title-meta";
+
         const page = row.Page || "";
+        const sheet = row.Sheet || "";
 
-        metaEl.innerHTML =
-          `<span>📅 ${year || "?"} / ${quarterRaw || "?"}</span>` +
-          `<span>📄 Page ${page || "?"}</span>` +
-          (row.Sheet ? `<span>📑 Sheet：${escapeHtml(row.Sheet)}</span>` : "");
+        meta.innerHTML =
+          `<span>📄 Page ${escapeHtml(page || "?")}</span>` +
+          (sheet ? ` <span>📑 Sheet：${escapeHtml(sheet)}</span>` : "") +
+          (row.Key ? ` <span>🔑 ${highlightText(row.Key, keywords)}</span>` : "");
 
-        const keyEl = document.createElement("div");
-        keyEl.className = "qa-keywords";
-        if (row.Key) {
-          keyEl.innerHTML = `🔑 Key：${highlightText(row.Key, keywords)}`;
-        }
+        titleLine.appendChild(titleMain);
+        titleLine.appendChild(meta);
 
-        headerMain.appendChild(titleEl);
-        headerMain.appendChild(metaEl);
-        if (row.Key) headerMain.appendChild(keyEl);
+        const detail = document.createElement("div");
+        detail.className = "title-detail";
+        detail.style.display = "none";
 
-        const toggleIcon = document.createElement("div");
-        toggleIcon.className = "qa-toggle-icon";
-        toggleIcon.textContent = "＋";
-
-        header.appendChild(headerMain);
-        header.appendChild(toggleIcon);
-
-        const body = document.createElement("div");
-        body.className = "qa-body";
-
-        const infoHtml = `
-          <div class="qa-field">
-            <label>Sheet：</label>
-            <div>${escapeHtml(row.Sheet || "")}</div>
+        const detailHtml = `
+          <div class="qa-section-title">Quarter / Year / Page</div>
+          <div class="qa-section-text">
+${escapeHtml(quarterRaw || "")} / ${escapeHtml(year || "")} / ${escapeHtml(page || "")}
           </div>
-          <div class="qa-field">
-            <label>Quarter：</label>
-            <div>${escapeHtml(quarterRaw)}</div>
-          </div>
-          <div class="qa-field">
-            <label>Year：</label>
-            <div>${escapeHtml(year)}</div>
-          </div>
-          <div class="qa-field">
-            <label>Page：</label>
-            <div>${escapeHtml(page)}</div>
-          </div>
-          <div class="qa-field">
-            <label>Title：</label>
-            <div>${highlightText(row.Title || "", keywords)}</div>
-          </div>
+
+          <div class="qa-section-title">Title</div>
+          <div class="qa-section-text">${highlightText(row.Title || "", keywords)}</div>
 
           <div class="qa-section-title">Question</div>
           <div class="qa-section-text">${highlightText(row.Question || "", keywords)}</div>
@@ -786,43 +797,24 @@
           <div class="qa-section-title">Key</div>
           <div class="qa-section-text">${highlightText(row.Key || "", keywords)}</div>
         `;
+        detail.innerHTML = detailHtml;
 
-        body.innerHTML = infoHtml;
-
-        card.appendChild(header);
-        card.appendChild(body);
-        resultsContainer.appendChild(card);
-
-        header.addEventListener("click", () => {
-          toggleCard(card);
+        // Title 行本身點擊 → 展開/收合詳細內容
+        titleLine.addEventListener("click", () => {
+          toggleBlock(detail, null);
         });
-      });
-    }
 
-    // Accordion：一次只開一張卡片
-    function toggleCard(card) {
-      const isActive = card.classList.contains("active");
-      const allCards = document.querySelectorAll(".qa-card");
+        titleItem.appendChild(titleLine);
+        titleItem.appendChild(detail);
 
-      allCards.forEach((c) => {
-        c.classList.remove("active");
-        const body = c.querySelector(".qa-body");
-        const icon = c.querySelector(".qa-toggle-icon");
-        if (body) body.style.maxHeight = 0;
-        if (icon) icon.textContent = "＋";
-      });
-
-      if (!isActive) {
-        card.classList.add("active");
-        const body = card.querySelector(".qa-body");
-        const icon = card.querySelector(".qa-toggle-icon");
-        if (body) {
-          body.style.maxHeight = "0px";
-          const h = body.scrollHeight;
-          body.style.maxHeight = h + "px";
+        if (currentQuarterChildren) {
+          currentQuarterChildren.appendChild(titleItem);
+        } else if (currentYearChildren) {
+          currentYearChildren.appendChild(titleItem);
+        } else {
+          resultsContainer.appendChild(titleItem);
         }
-        if (icon) icon.textContent = "－";
-      }
+      });
     }
   </script>
 </body>
