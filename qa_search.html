@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>期刊 QA 搜尋</title>
+
+  <!-- xlsx.js：用來讀取 Excel -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
+        "PingFang TC", "Microsoft JhengHei", sans-serif;
+      background: #f5f5f7;
+      color: #333;
+    }
+
+    .app-container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px 16px 40px;
+    }
+
+    h1 {
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 20px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 16px;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      margin-bottom: 16px;
+    }
+
+    .toolbar-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    label {
+      font-size: 13px;
+      color: #555;
+    }
+
+    input[type="file"] {
+      font-size: 13px;
+    }
+
+    .search-input {
+      flex: 1 1 220px;
+      min-width: 200px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .search-input:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+    }
+
+    button {
+      border-radius: 999px;
+      border: none;
+      padding: 8px 16px;
+      font-size: 14px;
+      cursor: pointer;
+      background: #2563eb;
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.2s, box-shadow 0.2s, transform 0.05s;
+    }
+
+    button:active {
+      transform: translateY(1px);
+      box-shadow: none;
+    }
+
+    button:hover {
+      background: #1d4ed8;
+      box-shadow: 0 4px 10px rgba(37, 99, 235, 0.25);
+    }
+
+    .btn-secondary {
+      background: #e5e7eb;
+      color: #111827;
+      box-shadow: none;
+    }
+
+    .btn-secondary:hover {
+      background: #d1d5db;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+
+    .status-bar {
+      font-size: 13px;
+      color: #555;
+      margin-bottom: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: baseline;
+    }
+
+    .status-bar span { white-space: nowrap; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #e5e7eb;
+      font-size: 12px;
+      color: #374151;
+    }
+
+    .results-container {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .empty-message {
+      padding: 24px 16px;
+      border-radius: 12px;
+      background: #fff;
+      text-align: center;
+      color: #6b7280;
+      font-size: 14px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+    }
+
+    /* 年度 / 季別 標題 */
+    .year-header {
+      margin-top: 18px;
+      margin-bottom: 4px;
+      font-size: 18px;
+      font-weight: 700;
+      color: #111827;
+    }
+
+    .quarter-header {
+      margin-left: 6px;
+      margin-top: 8px;
+      margin-bottom: 4px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #374151;
+    }
+
+    /* 卡片縮排，顯示層次 */
+    .qa-card {
+      margin-left: 16px;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+      overflow: hidden;
+      border: 1px solid #e5e7eb;
+      transition: box-shadow 0.15s, border-color 0.15s, transform 0.05s;
+    }
+
+    .qa-card.active {
+      border-color: #2563eb;
+      box-shadow: 0 6px 18px rgba(37, 99, 235, 0.2);
+      transform: translateY(-1px);
+    }
+
+    .qa-header {
+      padding: 10px 14px;
+      background: #f9fafb;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      cursor: pointer;
+    }
+
+    .qa-header-main {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .qa-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #111827;
+    }
+
+    .qa-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    .qa-meta span {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .qa-keywords {
+      font-size: 12px;
+      color: #4b5563;
+    }
+
+    .qa-toggle-icon {
+      font-size: 16px;
+      color: #6b7280;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .qa-body {
+      overflow: hidden;
+      max-height: 0;
+      padding: 0 14px;
+      border-top: 1px solid #e5e7eb;
+      transition: max-height 0.22s ease, padding-top 0.22s ease, padding-bottom 0.22s ease;
+    }
+
+    .qa-card.active .qa-body {
+      padding-top: 10px;
+      padding-bottom: 12px;
+    }
+
+    .qa-field {
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    .qa-field label {
+      display: inline-block;
+      min-width: 70px;
+      font-weight: 600;
+      color: #374151;
+    }
+
+    .qa-field pre,
+    .qa-field div {
+      display: inline;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: inherit;
+    }
+
+    .qa-section-title {
+      margin-top: 4px;
+      margin-bottom: 2px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #4b5563;
+    }
+
+    .qa-section-text {
+      font-size: 14px;
+      color: #111827;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin-bottom: 6px;
+    }
+
+    .highlight {
+      background: #fef08a;
+      padding: 0 2px;
+      border-radius: 3px;
+    }
+
+    @media (max-width: 640px) {
+      .qa-field label {
+        display: block;
+        margin-bottom: 2px;
+      }
+
+      .toolbar {
+        align-items: stretch;
+      }
+
+      button {
+        width: 100%;
+        justify-content: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <h1>期刊 QA 搜尋系統</h1>
+    <div class="subtitle">
+      從 Excel 載入：Quarter / Year / Page / Title / Question / Answer / Note / Key。<br>
+      🔍 關鍵字只在 <strong>Question / Answer</strong> 中做 AND 搜尋（多個關鍵字用空白分隔），並支援代碼去掉符號搜尋，例如：
+      <code>COVID-19</code> 可用 <code>covid</code> / <code>covid19</code>；<code>U07.1</code> 可用 <code>u07.1</code> / <code>u071</code>。<br>
+      📄 會自動讀取「所有工作表」中有 Question/Answer 欄位的資料，合併後顯示。
+    </div>
+
+    <div class="toolbar">
+      <div class="toolbar-group">
+        <label for="fileInput">1. 選擇 QA Excel 檔：</label>
+        <input id="fileInput" type="file" accept=".xlsx,.xls" />
+      </div>
+
+      <div class="toolbar-group" style="flex:1 1 auto;">
+        <input
+          id="searchInput"
+          class="search-input"
+          type="text"
+          placeholder="2. 請輸入關鍵字（空白分隔：如 covid-19 u07.1）"
+        />
+        <button id="searchBtn" type="button">搜尋</button>
+        <button id="clearBtn" type="button" class="btn-secondary">清除</button>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <span id="loadStatus">尚未載入 Excel 檔</span>
+      <span id="resultStatus"></span>
+    </div>
+
+    <div id="results" class="results-container">
+      <div class="empty-message">
+        請先選擇 Excel 檔，載入完成後即可輸入關鍵字搜尋。<br />
+        關鍵字以空白分隔，<strong>只會在 Question / Answer</strong> 中做 AND 搜尋，並支援去掉符號的代碼搜尋。<br>
+        會自動從所有工作表中匯入合適欄位的資料。
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let qaData = [];      // 正規化後完整資料
+    let filteredData = []; // 搜尋結果
+
+    const fileInput = document.getElementById("fileInput");
+    const searchInput = document.getElementById("searchInput");
+    const searchBtn = document.getElementById("searchBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const loadStatus = document.getElementById("loadStatus");
+    const resultStatus = document.getElementById("resultStatus");
+    const resultsContainer = document.getElementById("results");
+
+    fileInput.addEventListener("change", handleFile, false);
+    searchBtn.addEventListener("click", doSearch);
+    clearBtn.addEventListener("click", () => {
+      searchInput.value = "";
+      if (qaData.length === 0) return;
+      filteredData = qaData;
+      renderResults(filteredData, []);
+      updateResultStatus();
+      searchInput.focus();
+    });
+    searchInput.addEventListener("keyup", (e) => {
+      if (e.key === "Enter") {
+        doSearch();
+      }
+    });
+
+    function normalize(str) {
+      return String(str || "").toLowerCase();
+    }
+
+    // 搜尋用：同時保留「原始小寫」與「去掉非英數字」版本
+    function normalizeForSearch(str) {
+      const raw = normalize(str);                 // 原始小寫（含符號）
+      const plain = raw.replace(/[^a-z0-9]/g, ""); // 去掉符號，只留 a-z0-9
+      return { raw, plain };
+    }
+
+    function normalizeHeaderName(name) {
+      return String(name || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[\s_]+/g, "")
+        .replace(/[^a-z0-9]/g, "");
+    }
+
+    // 把字串轉成數字，失敗就給 0
+    function toNumber(val) {
+      const n = parseInt(val, 10);
+      return isNaN(n) ? 0 : n;
+    }
+
+    // Quarter 可能是 1、2、3、4 或 Q1、1Q 等，抓裡面的數字
+    function toQuarterNumber(val) {
+      const m = String(val || "").match(/\d+/);
+      if (!m) return 0;
+      const n = parseInt(m[0], 10);
+      return isNaN(n) ? 0 : n;
+    }
+
+    // 依 Year↑、Quarter↑、Page↑ 排序（2015 → 2016 → 2017）
+    function sortByYearQuarterPage(arr) {
+      return arr.slice().sort((a, b) => {
+        const ya = toNumber(a.Year);
+        const yb = toNumber(b.Year);
+        if (ya !== yb) return ya - yb;        // 年度：小到大
+
+        const qa = toQuarterNumber(a.Quarter);
+        const qb = toQuarterNumber(b.Quarter);
+        if (qa !== qb) return qa - qb;        // 季度：1 → 4
+
+        const pa = toNumber(a.Page);
+        const pb = toNumber(b.Page);
+        return pa - pb;                       // 頁數：小到大
+      });
+    }
+
+    function handleFile(evt) {
+      const file = evt.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: "array" });
+
+          if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+            loadStatus.textContent = "此檔案沒有任何工作表。";
+            resultsContainer.innerHTML =
+              `<div class="empty-message">檔案為空。</div>`;
+            qaData = [];
+            filteredData = [];
+            updateResultStatus();
+            return;
+          }
+
+          const headerCandidates = ["quarter","year","page","title","question","answer","note","key"];
+
+          qaData = [];
+          const sheetSummaries = [];
+
+          // 🔍 逐一處理所有工作表，找到有 QA 欄位的就匯入
+          workbook.SheetNames.forEach((sheetName) => {
+            const ws = workbook.Sheets[sheetName];
+            const rows = XLSX.utils.sheet_to_json(ws, {
+              header: 1,
+              defval: ""
+            });
+            if (!rows || rows.length === 0) return;
+
+            let headerRowIndex = -1;
+            let matchCountOnHeader = 0;
+
+            for (let i = 0; i < rows.length; i++) {
+              const row = rows[i];
+              if (!row || row.length === 0) continue;
+              let matchCount = 0;
+              for (let c = 0; c < row.length; c++) {
+                const normalized = normalizeHeaderName(row[c]);
+                if (headerCandidates.includes(normalized)) {
+                  matchCount++;
+                }
+              }
+              if (matchCount >= 2) {
+                headerRowIndex = i;
+                matchCountOnHeader = matchCount;
+                break; // 用第一個符合的標題列
+              }
+            }
+
+            if (headerRowIndex === -1) {
+              // 這個 sheet 沒偵測到 QA 標題列，就略過
+              return;
+            }
+
+            const headerRow = rows[headerRowIndex];
+            const dataRows = rows.slice(headerRowIndex + 1);
+
+            let countThisSheet = 0;
+
+            dataRows.forEach((row) => {
+              // 判斷是不是整列真的都空白（連 Year/Quarter 都沒有）
+              const allEmpty = row.every((cell) => String(cell).trim() === "");
+              if (allEmpty) return;
+
+              const obj = {
+                Sheet: sheetName,
+                Quarter: "",
+                Year: "",
+                Page: "",
+                Title: "",
+                Question: "",
+                Answer: "",
+                Note: "",
+                Key: ""
+              };
+
+              for (let i = 0; i < headerRow.length; i++) {
+                const rawHeader = headerRow[i];
+                const cell = row[i];
+                const norm = normalizeHeaderName(rawHeader);
+
+                if (norm === "quarter") obj.Quarter = cell;
+                else if (norm === "year") obj.Year = cell;
+                else if (norm === "page") obj.Page = cell;
+                else if (norm === "title") obj.Title = cell;
+                else if (norm === "question") obj.Question = cell;
+                else if (norm === "answer") obj.Answer = cell;
+                else if (norm === "note") obj.Note = cell;
+                else if (norm === "key") obj.Key = cell;
+              }
+
+              qaData.push(obj);
+              countThisSheet++;
+            });
+
+            sheetSummaries.push({
+              name: sheetName,
+              headerRowIndex,
+              matchCount: matchCountOnHeader,
+              count: countThisSheet
+            });
+          });
+
+          if (qaData.length === 0) {
+            loadStatus.textContent = "沒有在任何工作表中找到 Question / Answer 等欄位。";
+            resultsContainer.innerHTML =
+              `<div class="empty-message">請確認 Excel 中至少有一張工作表含 Quarter / Year / Question / Answer 等欄位。</div>`;
+            filteredData = [];
+            updateResultStatus();
+            return;
+          }
+
+          // 讀進來就先依 Year / Quarter / Page 排好
+          qaData = sortByYearQuarterPage(qaData);
+          filteredData = qaData;
+
+          // 組合載入摘要文字
+          const sheetInfoText = sheetSummaries
+            .map(s => `${s.name}：${s.count} 筆（標題列第 ${s.headerRowIndex + 1} 行，匹配欄位 ${s.matchCount}）`)
+            .join("； ");
+
+          loadStatus.textContent =
+            `已從 ${sheetSummaries.length} 個工作表匯入，共 ${qaData.length} 筆資料。${sheetInfoText ? " 來源：" + sheetInfoText : ""}`;
+
+          renderResults(filteredData, []);
+          updateResultStatus();
+        } catch (err) {
+          console.error(err);
+          loadStatus.textContent = "載入 Excel 發生錯誤，請檢查檔案格式。";
+          resultsContainer.innerHTML =
+            `<div class="empty-message">載入失敗，請確認 Excel 檔案是否為標準 .xlsx / .xls 格式。</div>`;
+          qaData = [];
+          filteredData = [];
+          updateResultStatus();
+        }
+      };
+
+      reader.readAsArrayBuffer(file);
+    }
+
+    function doSearch() {
+      if (qaData.length === 0) {
+        alert("請先選擇並載入 Excel 檔。");
+        return;
+      }
+
+      const rawInput = searchInput.value.trim();
+      const keywordsRaw = rawInput
+        .split(/\s+/)
+        .filter(Boolean);
+
+      if (keywordsRaw.length === 0) {
+        filteredData = qaData;
+        renderResults(filteredData, []);
+        updateResultStatus();
+        return;
+      }
+
+      // 預先把關鍵字做 normalizeForSearch
+      const keywordObjs = keywordsRaw.map((kw) => normalizeForSearch(kw));
+
+      filteredData = qaData.filter((row) => {
+        // 只在 Question + Answer 裡搜尋
+        const qaText = `${row.Question || ""}  ${row.Answer || ""}`;
+        const hay = normalizeForSearch(qaText);
+
+        // 每一個關鍵字都要 match（AND）
+        return keywordObjs.every((k) => {
+          // 先看「原始小寫」是否包含，例如：covid vs covid-19
+          if (k.raw && hay.raw.includes(k.raw)) return true;
+          // 再看「去掉符號」是否包含，例如：u071 vs u07.1、covid19 vs covid-19
+          if (k.plain && hay.plain.includes(k.plain)) return true;
+          return false;
+        });
+      });
+
+      // 結果仍依 Year / Quarter / Page 排一次
+      filteredData = sortByYearQuarterPage(filteredData);
+
+      const keywordForHighlight = keywordObjs.map(k => k.raw).filter(Boolean);
+      renderResults(filteredData, keywordForHighlight);
+      updateResultStatus(keywordsRaw.map(k => k.toLowerCase()));
+    }
+
+    function updateResultStatus(keywords = []) {
+      if (qaData.length === 0) {
+        resultStatus.textContent = "";
+        return;
+      }
+      if (!keywords || keywords.length === 0) {
+        resultStatus.innerHTML =
+          `<span class="badge">顯示全部 ${filteredData.length} 筆</span>`;
+      } else {
+        resultStatus.innerHTML =
+          `<span class="badge">關鍵字：${keywords.join(" & ")}</span>` +
+          ` <span class="badge">搜尋結果 ${filteredData.length} 筆</span>`;
+      }
+    }
+
+    function highlightText(text, keywords) {
+      if (!keywords || keywords.length === 0) return escapeHtml(text);
+
+      let escaped = escapeHtml(text);
+      keywords.forEach((kw) => {
+        if (!kw) return;
+        const pattern = new RegExp("(" + escapeRegExp(kw) + ")", "ig");
+        escaped = escaped.replace(pattern, `<span class="highlight">$1</span>`);
+      });
+      return escaped;
+    }
+
+    function escapeHtml(str) {
+      return String(str || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function escapeRegExp(str) {
+      return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    // 依 Year / Quarter 堆疊顯示 + 卡片
+    function renderResults(data, keywords) {
+      if (!data || data.length === 0) {
+        resultsContainer.innerHTML =
+          `<div class="empty-message">沒有符合條件的結果。</div>`;
+        return;
+      }
+
+      resultsContainer.innerHTML = "";
+
+      let currentYear = null;
+      let currentQuarter = null;
+
+      data.forEach((row, index) => {
+        const year = row.Year || "";
+        const quarterRaw = row.Quarter || "";
+
+        // 年度變了 → 加 Year 標題
+        if (year !== currentYear) {
+          currentYear = year;
+          currentQuarter = null;
+
+          const yearHeader = document.createElement("div");
+          yearHeader.className = "year-header";
+          yearHeader.textContent = year ? String(year) : "(未填 Year)";
+          resultsContainer.appendChild(yearHeader);
+        }
+
+        // 季度變了 → 加 Quarter 標題
+        if (quarterRaw !== currentQuarter) {
+          currentQuarter = quarterRaw;
+
+          const quarterHeader = document.createElement("div");
+          quarterHeader.className = "quarter-header";
+
+          const qStr = String(quarterRaw || "").trim();
+          if (/^\d+$/.test(qStr)) {
+            quarterHeader.textContent = `Q${qStr}`;
+          } else if (qStr) {
+            quarterHeader.textContent = qStr;
+          } else {
+            quarterHeader.textContent = "(未填 Quarter)";
+          }
+
+          resultsContainer.appendChild(quarterHeader);
+        }
+
+        // === 卡片本體 ===
+        const card = document.createElement("div");
+        card.className = "qa-card";
+        card.dataset.index = String(index);
+
+        const header = document.createElement("div");
+        header.className = "qa-header";
+
+        const headerMain = document.createElement("div");
+        headerMain.className = "qa-header-main";
+
+        const titleEl = document.createElement("div");
+        titleEl.className = "qa-title";
+        titleEl.innerHTML =
+          row.Title
+            ? highlightText(row.Title, keywords)
+            : "(無標題 Title)";
+
+        const metaEl = document.createElement("div");
+        metaEl.className = "qa-meta";
+        const page = row.Page || "";
+
+        metaEl.innerHTML =
+          `<span>📅 ${year || "?"} / ${quarterRaw || "?"}</span>` +
+          `<span>📄 Page ${page || "?"}</span>` +
+          (row.Sheet ? `<span>📑 Sheet：${escapeHtml(row.Sheet)}</span>` : "");
+
+        const keyEl = document.createElement("div");
+        keyEl.className = "qa-keywords";
+        if (row.Key) {
+          keyEl.innerHTML = `🔑 Key：${highlightText(row.Key, keywords)}`;
+        }
+
+        headerMain.appendChild(titleEl);
+        headerMain.appendChild(metaEl);
+        if (row.Key) headerMain.appendChild(keyEl);
+
+        const toggleIcon = document.createElement("div");
+        toggleIcon.className = "qa-toggle-icon";
+        toggleIcon.textContent = "＋";
+
+        header.appendChild(headerMain);
+        header.appendChild(toggleIcon);
+
+        const body = document.createElement("div");
+        body.className = "qa-body";
+
+        const infoHtml = `
+          <div class="qa-field">
+            <label>Sheet：</label>
+            <div>${escapeHtml(row.Sheet || "")}</div>
+          </div>
+          <div class="qa-field">
+            <label>Quarter：</label>
+            <div>${escapeHtml(quarterRaw)}</div>
+          </div>
+          <div class="qa-field">
+            <label>Year：</label>
+            <div>${escapeHtml(year)}</div>
+          </div>
+          <div class="qa-field">
+            <label>Page：</label>
+            <div>${escapeHtml(page)}</div>
+          </div>
+          <div class="qa-field">
+            <label>Title：</label>
+            <div>${highlightText(row.Title || "", keywords)}</div>
+          </div>
+
+          <div class="qa-section-title">Question</div>
+          <div class="qa-section-text">${highlightText(row.Question || "", keywords)}</div>
+
+          <div class="qa-section-title">Answer</div>
+          <div class="qa-section-text">${highlightText(row.Answer || "", keywords)}</div>
+
+          <div class="qa-section-title">Note</div>
+          <div class="qa-section-text">${highlightText(row.Note || "", keywords)}</div>
+
+          <div class="qa-section-title">Key</div>
+          <div class="qa-section-text">${highlightText(row.Key || "", keywords)}</div>
+        `;
+
+        body.innerHTML = infoHtml;
+
+        card.appendChild(header);
+        card.appendChild(body);
+        resultsContainer.appendChild(card);
+
+        header.addEventListener("click", () => {
+          toggleCard(card);
+        });
+      });
+    }
+
+    // Accordion：一次只開一張卡片
+    function toggleCard(card) {
+      const isActive = card.classList.contains("active");
+      const allCards = document.querySelectorAll(".qa-card");
+
+      allCards.forEach((c) => {
+        c.classList.remove("active");
+        const body = c.querySelector(".qa-body");
+        const icon = c.querySelector(".qa-toggle-icon");
+        if (body) body.style.maxHeight = 0;
+        if (icon) icon.textContent = "＋";
+      });
+
+      if (!isActive) {
+        card.classList.add("active");
+        const body = card.querySelector(".qa-body");
+        const icon = card.querySelector(".qa-toggle-icon");
+        if (body) {
+          body.style.maxHeight = "0px";
+          const h = body.scrollHeight;
+          body.style.maxHeight = h + "px";
+        }
+        if (icon) icon.textContent = "－";
+      }
+    }
+  </script>
+</body>
+</html>
