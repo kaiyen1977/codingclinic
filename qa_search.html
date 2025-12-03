@@ -405,20 +405,20 @@ function toQuarterNumber(val) {
 
     // 依 Year↑、Quarter↑、Page↑ 排序（2015 → 2016 → 2017）
     function sortByYearQuarterPage(arr) {
-      return arr.slice().sort((a, b) => {
-        const ya = toNumber(a.Year);
-        const yb = toNumber(b.Year);
-        if (ya !== yb) return ya - yb;        // 年度：小到大
+  return arr.slice().sort((a, b) => {
+    const ya = toNumber(a.Year);
+    const yb = toNumber(b.Year);
+    if (ya !== yb) return ya - yb;
 
-        const qa = toQuarterNumber(a.Quarter);
-        const qb = toQuarterNumber(b.Quarter);
-        if (qa !== qb) return qa - qb;        // 季度：1 → 4
+    const qa = toQuarterNumber(a.Quarter);
+    const qb = toQuarterNumber(b.Quarter);
+    if (qa !== qb) return qa - qb;
 
-        const pa = toNumber(a.Page);
-        const pb = toNumber(b.Page);
-        return pa - pb;                       // 頁數：小到大
-      });
-    }
+    const pa = toNumber(a.Page);
+    const pb = toNumber(b.Page);
+    return pa - pb;
+  });
+}
 
     function handleFile(evt) {
       const file = evt.target.files[0];
@@ -831,4 +831,5 @@ ${escapeHtml(quarterRaw || "")} / ${escapeHtml(year || "")} / ${escapeHtml(page 
   </script>
 </body>
 </html>
+
 
