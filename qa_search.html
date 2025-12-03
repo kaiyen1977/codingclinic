@@ -384,12 +384,24 @@
     }
 
     // Quarter 可能是 1、2、3、4 或 Q1、1Q 等，抓裡面的數字
-    function toQuarterNumber(val) {
-      const m = String(val || "").match(/\d+/);
-      if (!m) return 0;
-      const n = parseInt(m[0], 10);
-      return isNaN(n) ? 0 : n;
-    }
+   // Quarter 可能是 1、2、3、4、Q1、First / Second / Third / Fourth 等，統一轉成 1~4
+function toQuarterNumber(val) {
+  const s = String(val || "").toLowerCase().trim();
+  if (!s) return 0;
+
+  // 先處理英文文字的季別
+  if (s.includes("first"))  return 1;
+  if (s.includes("second")) return 2;
+  if (s.includes("third"))  return 3;
+  if (s.includes("fourth") || s.includes("four")) return 4;
+
+  // 再處理 Q1、1Q、第1季 等含數字的寫法
+  const m = s.match(/\d+/);
+  if (!m) return 0;
+  const n = parseInt(m[0], 10);
+  return isNaN(n) ? 0 : n;
+}
+
 
     // 依 Year↑、Quarter↑、Page↑ 排序（2015 → 2016 → 2017）
     function sortByYearQuarterPage(arr) {
@@ -819,3 +831,4 @@ ${escapeHtml(quarterRaw || "")} / ${escapeHtml(year || "")} / ${escapeHtml(page 
   </script>
 </body>
 </html>
+
