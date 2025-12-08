@@ -331,504 +331,543 @@
   </div>
 
   <script>
-    let qaData = [];      // 正規化後完整資料
-    let filteredData = []; // 搜尋結果
+  // === 這裡改成你在 GitHub 上「Raw」得到的連結 ===
+  const DEFAULT_XLSX_URL =
+    "https://raw.githubusercontent.com/你的帳號/你的Repo/main/coding%20clinic.xlsx";
 
-    const fileInput = document.getElementById("fileInput");
-    const searchInput = document.getElementById("searchInput");
-    const searchBtn = document.getElementById("searchBtn");
-    const clearBtn = document.getElementById("clearBtn");
-    const loadStatus = document.getElementById("loadStatus");
-    const resultStatus = document.getElementById("resultStatus");
-    const resultsContainer = document.getElementById("results");
+  let qaData = [];       // 正規化後完整資料
+  let filteredData = []; // 搜尋結果
 
-    fileInput.addEventListener("change", handleFile, false);
-    searchBtn.addEventListener("click", doSearch);
-    clearBtn.addEventListener("click", () => {
-      searchInput.value = "";
-      if (qaData.length === 0) return;
+  const fileInput = document.getElementById("fileInput");
+  const searchInput = document.getElementById("searchInput");
+  const searchBtn = document.getElementById("searchBtn");
+  const clearBtn = document.getElementById("clearBtn");
+  const loadStatus = document.getElementById("loadStatus");
+  const resultStatus = document.getElementById("resultStatus");
+  const resultsContainer = document.getElementById("results");
+
+  fileInput.addEventListener("change", handleFile, false);
+  searchBtn.addEventListener("click", doSearch);
+  clearBtn.addEventListener("click", () => {
+    searchInput.value = "";
+    if (qaData.length === 0) return;
+    filteredData = qaData;
+    renderResults(filteredData, []);
+    updateResultStatus();
+    searchInput.focus();
+  });
+  searchInput.addEventListener("keyup", (e) => {
+    if (e.key === "Enter") {
+      doSearch();
+    }
+  });
+
+  // 網頁載入時，先嘗試從 GitHub 自動載入 Excel
+  window.addEventListener("load", () => {
+    if (DEFAULT_XLSX_URL) {
+      autoLoadGithubXlsx();
+    }
+  });
+
+  function normalize(str) {
+    return String(str || "").toLowerCase();
+  }
+
+  // 搜尋用：同時保留「原始小寫」與「去掉非英數字」版本
+  function normalizeForSearch(str) {
+    const raw = normalize(str);                 // 原始小寫（含符號）
+    const plain = raw.replace(/[^a-z0-9]/g, ""); // 去掉符號，只留 a-z0-9
+    return { raw, plain };
+  }
+
+  function normalizeHeaderName(name) {
+    return String(name || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_]+/g, "")
+      .replace(/[^a-z0-9]/g, "");
+  }
+
+  // 把字串轉成數字，失敗就給 0
+  function toNumber(val) {
+    const n = parseInt(val, 10);
+    return isNaN(n) ? 0 : n;
+  }
+
+  // Quarter 可能是 1、2、3、4、Q1、First / Second / Third / Fourth 等，統一轉成 1~4
+  function toQuarterNumber(val) {
+    const s = String(val || "").toLowerCase().trim();
+    if (!s) return 0;
+
+    // 先處理英文文字的季別
+    if (s.includes("first"))  return 1;
+    if (s.includes("second")) return 2;
+    if (s.includes("third"))  return 3;
+    if (s.includes("fourth") || s.includes("four")) return 4;
+
+    // 再處理 Q1、1Q、第1季 等含數字的寫法
+    const m = s.match(/\d+/);
+    if (!m) return 0;
+    const n = parseInt(m[0], 10);
+    return isNaN(n) ? 0 : n;
+  }
+
+  // 依 Year↑、Quarter↑、Page↑ 排序（2015 → 2016 → 2017）
+  function sortByYearQuarterPage(arr) {
+    return arr.slice().sort((a, b) => {
+      const ya = toNumber(a.Year);
+      const yb = toNumber(b.Year);
+      if (ya !== yb) return ya - yb;
+
+      const qa = toQuarterNumber(a.Quarter);
+      const qb = toQuarterNumber(b.Quarter);
+      if (qa !== qb) return qa - qb;
+
+      const pa = toNumber(a.Page);
+      const pb = toNumber(b.Page);
+      return pa - pb;
+    });
+  }
+
+  // 🔹通用解析：給「已讀好的 workbook」，負責把資料塞進 qaData / 畫畫面
+  function processWorkbook(workbook, sourceLabel = "") {
+    if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+      loadStatus.textContent = "此檔案沒有任何工作表。";
+      resultsContainer.innerHTML =
+        `<div class="empty-message">檔案為空。</div>`;
+      qaData = [];
+      filteredData = [];
+      updateResultStatus();
+      return;
+    }
+
+    const headerCandidates = [
+      "quarter", "year", "page",
+      "title", "question", "answer", "note", "key"
+    ];
+
+    qaData = [];
+    const sheetSummaries = [];
+
+    // 🔍 逐一處理所有工作表，找到有 QA 欄位的就匯入
+    workbook.SheetNames.forEach((sheetName) => {
+      const ws = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, {
+        header: 1,
+        defval: ""
+      });
+      if (!rows || rows.length === 0) return;
+
+      let headerRowIndex = -1;
+      let matchCountOnHeader = 0;
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || row.length === 0) continue;
+        let matchCount = 0;
+        for (let c = 0; c < row.length; c++) {
+          const normalized = normalizeHeaderName(row[c]);
+          if (headerCandidates.includes(normalized)) {
+            matchCount++;
+          }
+        }
+        if (matchCount >= 2) {
+          headerRowIndex = i;
+          matchCountOnHeader = matchCount;
+          break; // 用第一個符合的標題列
+        }
+      }
+
+      if (headerRowIndex === -1) {
+        // 這個 sheet 沒偵測到 QA 標題列，就略過
+        return;
+      }
+
+      const headerRow = rows[headerRowIndex];
+      const dataRows = rows.slice(headerRowIndex + 1);
+
+      let countThisSheet = 0;
+
+      dataRows.forEach((row) => {
+        const allEmpty = row.every((cell) => String(cell).trim() === "");
+        if (allEmpty) return;
+
+        const obj = {
+          Sheet: sheetName,
+          Quarter: "",
+          Year: "",
+          Page: "",
+          Title: "",
+          Question: "",
+          Answer: "",
+          Note: "",
+          Key: ""
+        };
+
+        for (let i = 0; i < headerRow.length; i++) {
+          const rawHeader = headerRow[i];
+          const cell = row[i];
+          const norm = normalizeHeaderName(rawHeader);
+
+          if (norm === "quarter") obj.Quarter = cell;
+          else if (norm === "year") obj.Year = cell;
+          else if (norm === "page") obj.Page = cell;
+          else if (norm === "title") obj.Title = cell;
+          else if (norm === "question") obj.Question = cell;
+          else if (norm === "answer") obj.Answer = cell;
+          else if (norm === "note") obj.Note = cell;
+          else if (norm === "key") obj.Key = cell;
+        }
+
+        qaData.push(obj);
+        countThisSheet++;
+      });
+
+      sheetSummaries.push({
+        name: sheetName,
+        headerRowIndex,
+        matchCount: matchCountOnHeader,
+        count: countThisSheet
+      });
+    });
+
+    if (qaData.length === 0) {
+      loadStatus.textContent = "沒有在任何工作表中找到 Question / Answer 等欄位。";
+      resultsContainer.innerHTML =
+        `<div class="empty-message">請確認 Excel 中至少有一張工作表含 Quarter / Year / Question / Answer 等欄位。</div>`;
+      filteredData = [];
+      updateResultStatus();
+      return;
+    }
+
+    // 讀進來就先依 Year / Quarter / Page 排好
+    qaData = sortByYearQuarterPage(qaData);
+    filteredData = qaData;
+
+    const sheetInfoText = sheetSummaries
+      .map(s => `${s.name}：${s.count} 筆（標題列第 ${s.headerRowIndex + 1} 行，匹配欄位 ${s.matchCount}）`)
+      .join("； ");
+
+    loadStatus.textContent =
+      `${sourceLabel ? "[" + sourceLabel + "] " : ""}` +
+      `已從 ${sheetSummaries.length} 個工作表匯入，共 ${qaData.length} 筆資料。` +
+      `${sheetInfoText ? " 來源：" + sheetInfoText : ""}`;
+
+    renderResults(filteredData, []);
+    updateResultStatus();
+  }
+
+  // 🔹手動選檔用：從 input 讀檔 → FileReader → workbook → processWorkbook
+  function handleFile(evt) {
+    const file = evt.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+        processWorkbook(workbook, `檔案：${file.name}`);
+      } catch (err) {
+        console.error(err);
+        loadStatus.textContent = "載入 Excel 發生錯誤，請檢查檔案格式。";
+        resultsContainer.innerHTML =
+          `<div class="empty-message">載入失敗，請確認 Excel 檔案是否為標準 .xlsx / .xls 格式。</div>`;
+        qaData = [];
+        filteredData = [];
+        updateResultStatus();
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  // 🔹自動從 GitHub 載入
+  async function autoLoadGithubXlsx() {
+    try {
+      loadStatus.textContent = "正在從 GitHub 載入預設 Excel 檔案...";
+      const resp = await fetch(DEFAULT_XLSX_URL);
+      if (!resp.ok) {
+        throw new Error(`HTTP 狀態碼：${resp.status}`);
+      }
+      const arrayBuffer = await resp.arrayBuffer();
+      const data = new Uint8Array(arrayBuffer);
+      const workbook = XLSX.read(data, { type: "array" });
+      processWorkbook(workbook, "GitHub 預設檔案");
+    } catch (err) {
+      console.error(err);
+      loadStatus.textContent =
+        "從 GitHub 載入預設 Excel 失敗，請改用「選擇檔案」上傳本機檔案。";
+      // 不清空介面，仍然讓使用者可以用手動上傳
+    }
+  }
+
+  function doSearch() {
+    if (qaData.length === 0) {
+      alert("請先選擇並載入 Excel 檔（或等待 GitHub 載入完成）。");
+      return;
+    }
+
+    const rawInput = searchInput.value.trim();
+    const keywordsRaw = rawInput
+      .split(/\s+/)
+      .filter(Boolean);
+
+    if (keywordsRaw.length === 0) {
       filteredData = qaData;
       renderResults(filteredData, []);
       updateResultStatus();
-      searchInput.focus();
-    });
-    searchInput.addEventListener("keyup", (e) => {
-      if (e.key === "Enter") {
-        doSearch();
-      }
-    });
-
-    function normalize(str) {
-      return String(str || "").toLowerCase();
+      return;
     }
 
-    // 搜尋用：同時保留「原始小寫」與「去掉非英數字」版本
-    function normalizeForSearch(str) {
-      const raw = normalize(str);                 // 原始小寫（含符號）
-      const plain = raw.replace(/[^a-z0-9]/g, ""); // 去掉符號，只留 a-z0-9
-      return { raw, plain };
-    }
+    const keywordObjs = keywordsRaw.map((kw) => normalizeForSearch(kw));
 
-    function normalizeHeaderName(name) {
-      return String(name || "")
-        .trim()
-        .toLowerCase()
-        .replace(/[\s_]+/g, "")
-        .replace(/[^a-z0-9]/g, "");
-    }
+    filteredData = qaData.filter((row) => {
+      // 只在 Question + Answer 裡搜尋
+      const qaText = `${row.Question || ""}  ${row.Answer || ""}`;
+      const hay = normalizeForSearch(qaText);
 
-    // 把字串轉成數字，失敗就給 0
-    function toNumber(val) {
-      const n = parseInt(val, 10);
-      return isNaN(n) ? 0 : n;
-    }
-
-    // Quarter 可能是 1、2、3、4 或 Q1、1Q 等，抓裡面的數字
-   // Quarter 可能是 1、2、3、4、Q1、First / Second / Third / Fourth 等，統一轉成 1~4
-function toQuarterNumber(val) {
-  const s = String(val || "").toLowerCase().trim();
-  if (!s) return 0;
-
-  // 先處理英文文字的季別
-  if (s.includes("first"))  return 1;
-  if (s.includes("second")) return 2;
-  if (s.includes("third"))  return 3;
-  if (s.includes("fourth") || s.includes("four")) return 4;
-
-  // 再處理 Q1、1Q、第1季 等含數字的寫法
-  const m = s.match(/\d+/);
-  if (!m) return 0;
-  const n = parseInt(m[0], 10);
-  return isNaN(n) ? 0 : n;
-}
-
-
-    // 依 Year↑、Quarter↑、Page↑ 排序（2015 → 2016 → 2017）
-    function sortByYearQuarterPage(arr) {
-  return arr.slice().sort((a, b) => {
-    const ya = toNumber(a.Year);
-    const yb = toNumber(b.Year);
-    if (ya !== yb) return ya - yb;
-
-    const qa = toQuarterNumber(a.Quarter);
-    const qb = toQuarterNumber(b.Quarter);
-    if (qa !== qb) return qa - qb;
-
-    const pa = toNumber(a.Page);
-    const pb = toNumber(b.Page);
-    return pa - pb;
-  });
-}
-
-    function handleFile(evt) {
-      const file = evt.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = function (e) {
-        try {
-          const data = new Uint8Array(e.target.result);
-          const workbook = XLSX.read(data, { type: "array" });
-
-          if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
-            loadStatus.textContent = "此檔案沒有任何工作表。";
-            resultsContainer.innerHTML =
-              `<div class="empty-message">檔案為空。</div>`;
-            qaData = [];
-            filteredData = [];
-            updateResultStatus();
-            return;
-          }
-
-          const headerCandidates = ["quarter","year","page","title","question","answer","note","key"];
-
-          qaData = [];
-          const sheetSummaries = [];
-
-          // 🔍 逐一處理所有工作表，找到有 QA 欄位的就匯入
-          workbook.SheetNames.forEach((sheetName) => {
-            const ws = workbook.Sheets[sheetName];
-            const rows = XLSX.utils.sheet_to_json(ws, {
-              header: 1,
-              defval: ""
-            });
-            if (!rows || rows.length === 0) return;
-
-            let headerRowIndex = -1;
-            let matchCountOnHeader = 0;
-
-            for (let i = 0; i < rows.length; i++) {
-              const row = rows[i];
-              if (!row || row.length === 0) continue;
-              let matchCount = 0;
-              for (let c = 0; c < row.length; c++) {
-                const normalized = normalizeHeaderName(row[c]);
-                if (headerCandidates.includes(normalized)) {
-                  matchCount++;
-                }
-              }
-              if (matchCount >= 2) {
-                headerRowIndex = i;
-                matchCountOnHeader = matchCount;
-                break; // 用第一個符合的標題列
-              }
-            }
-
-            if (headerRowIndex === -1) {
-              // 這個 sheet 沒偵測到 QA 標題列，就略過
-              return;
-            }
-
-            const headerRow = rows[headerRowIndex];
-            const dataRows = rows.slice(headerRowIndex + 1);
-
-            let countThisSheet = 0;
-
-            dataRows.forEach((row) => {
-              const allEmpty = row.every((cell) => String(cell).trim() === "");
-              if (allEmpty) return;
-
-              const obj = {
-                Sheet: sheetName,
-                Quarter: "",
-                Year: "",
-                Page: "",
-                Title: "",
-                Question: "",
-                Answer: "",
-                Note: "",
-                Key: ""
-              };
-
-              for (let i = 0; i < headerRow.length; i++) {
-                const rawHeader = headerRow[i];
-                const cell = row[i];
-                const norm = normalizeHeaderName(rawHeader);
-
-                if (norm === "quarter") obj.Quarter = cell;
-                else if (norm === "year") obj.Year = cell;
-                else if (norm === "page") obj.Page = cell;
-                else if (norm === "title") obj.Title = cell;
-                else if (norm === "question") obj.Question = cell;
-                else if (norm === "answer") obj.Answer = cell;
-                else if (norm === "note") obj.Note = cell;
-                else if (norm === "key") obj.Key = cell;
-              }
-
-              qaData.push(obj);
-              countThisSheet++;
-            });
-
-            sheetSummaries.push({
-              name: sheetName,
-              headerRowIndex,
-              matchCount: matchCountOnHeader,
-              count: countThisSheet
-            });
-          });
-
-          if (qaData.length === 0) {
-            loadStatus.textContent = "沒有在任何工作表中找到 Question / Answer 等欄位。";
-            resultsContainer.innerHTML =
-              `<div class="empty-message">請確認 Excel 中至少有一張工作表含 Quarter / Year / Question / Answer 等欄位。</div>`;
-            filteredData = [];
-            updateResultStatus();
-            return;
-          }
-
-          // 讀進來就先依 Year / Quarter / Page 排好
-          qaData = sortByYearQuarterPage(qaData);
-          filteredData = qaData;
-
-          const sheetInfoText = sheetSummaries
-            .map(s => `${s.name}：${s.count} 筆（標題列第 ${s.headerRowIndex + 1} 行，匹配欄位 ${s.matchCount}）`)
-            .join("； ");
-
-          loadStatus.textContent =
-            `已從 ${sheetSummaries.length} 個工作表匯入，共 ${qaData.length} 筆資料。${sheetInfoText ? " 來源：" + sheetInfoText : ""}`;
-
-          renderResults(filteredData, []);
-          updateResultStatus();
-        } catch (err) {
-          console.error(err);
-          loadStatus.textContent = "載入 Excel 發生錯誤，請檢查檔案格式。";
-          resultsContainer.innerHTML =
-            `<div class="empty-message">載入失敗，請確認 Excel 檔案是否為標準 .xlsx / .xls 格式。</div>`;
-          qaData = [];
-          filteredData = [];
-          updateResultStatus();
-        }
-      };
-
-      reader.readAsArrayBuffer(file);
-    }
-
-    function doSearch() {
-      if (qaData.length === 0) {
-        alert("請先選擇並載入 Excel 檔。");
-        return;
-      }
-
-      const rawInput = searchInput.value.trim();
-      const keywordsRaw = rawInput
-        .split(/\s+/)
-        .filter(Boolean);
-
-      if (keywordsRaw.length === 0) {
-        filteredData = qaData;
-        renderResults(filteredData, []);
-        updateResultStatus();
-        return;
-      }
-
-      const keywordObjs = keywordsRaw.map((kw) => normalizeForSearch(kw));
-
-      filteredData = qaData.filter((row) => {
-        // 只在 Question + Answer 裡搜尋
-        const qaText = `${row.Question || ""}  ${row.Answer || ""}`;
-        const hay = normalizeForSearch(qaText);
-
-        return keywordObjs.every((k) => {
-          if (k.raw && hay.raw.includes(k.raw)) return true;
-          if (k.plain && hay.plain.includes(k.plain)) return true;
-          return false;
-        });
+      return keywordObjs.every((k) => {
+        if (k.raw && hay.raw.includes(k.raw)) return true;
+        if (k.plain && hay.plain.includes(k.plain)) return true;
+        return false;
       });
+    });
 
-      filteredData = sortByYearQuarterPage(filteredData);
+    filteredData = sortByYearQuarterPage(filteredData);
 
-      const keywordForHighlight = keywordObjs.map(k => k.raw).filter(Boolean);
-      renderResults(filteredData, keywordForHighlight);
-      updateResultStatus(keywordsRaw.map(k => k.toLowerCase()));
+    const keywordForHighlight = keywordObjs.map(k => k.raw).filter(Boolean);
+    renderResults(filteredData, keywordForHighlight);
+    updateResultStatus(keywordsRaw.map(k => k.toLowerCase()));
+  }
+
+  function updateResultStatus(keywords = []) {
+    if (qaData.length === 0) {
+      resultStatus.textContent = "";
+      return;
+    }
+    if (!keywords || keywords.length === 0) {
+      resultStatus.innerHTML =
+        `<span class="badge">顯示全部 ${filteredData.length} 筆</span>`;
+    } else {
+      resultStatus.innerHTML =
+        `<span class="badge">關鍵字：${keywords.join(" & ")}</span>` +
+        ` <span class="badge">搜尋結果 ${filteredData.length} 筆</span>`;
+    }
+  }
+
+  function highlightText(text, keywords) {
+    if (!keywords || keywords.length === 0) return escapeHtml(text);
+
+    let escaped = escapeHtml(text);
+    keywords.forEach((kw) => {
+      if (!kw) return;
+      const pattern = new RegExp("(" + escapeRegExp(kw) + ")", "ig");
+      escaped = escaped.replace(pattern, `<span class="highlight">$1</span>`);
+    });
+    return escaped;
+  }
+
+  function escapeHtml(str) {
+    return String(str || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function escapeRegExp(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  // 簡單切換顯示 block/none
+  function toggleBlock(elem, iconSpan) {
+    if (!elem) return;
+    const isHidden = elem.style.display === "none" || elem.style.display === "";
+    elem.style.display = isHidden ? "block" : "none";
+    if (iconSpan) {
+      iconSpan.textContent = isHidden ? "▼" : "▶";
+    }
+  }
+
+  // 依 Year / Quarter 堆疊顯示成樹狀
+  function renderResults(data, keywords) {
+    if (!data || data.length === 0) {
+      resultsContainer.innerHTML =
+        `<div class="empty-message">沒有符合條件的結果。</div>`;
+      return;
     }
 
-    function updateResultStatus(keywords = []) {
-      if (qaData.length === 0) {
-        resultStatus.textContent = "";
-        return;
-      }
-      if (!keywords || keywords.length === 0) {
-        resultStatus.innerHTML =
-          `<span class="badge">顯示全部 ${filteredData.length} 筆</span>`;
-      } else {
-        resultStatus.innerHTML =
-          `<span class="badge">關鍵字：${keywords.join(" & ")}</span>` +
-          ` <span class="badge">搜尋結果 ${filteredData.length} 筆</span>`;
-      }
-    }
+    resultsContainer.innerHTML = "";
 
-    function highlightText(text, keywords) {
-      if (!keywords || keywords.length === 0) return escapeHtml(text);
+    let currentYear = null;
+    let currentYearChildren = null;
 
-      let escaped = escapeHtml(text);
-      keywords.forEach((kw) => {
-        if (!kw) return;
-        const pattern = new RegExp("(" + escapeRegExp(kw) + ")", "ig");
-        escaped = escaped.replace(pattern, `<span class="highlight">$1</span>`);
-      });
-      return escaped;
-    }
+    let currentQuarter = null;
+    let currentQuarterChildren = null;
 
-    function escapeHtml(str) {
-      return String(str || "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
-    }
+    data.forEach((row) => {
+      const year = row.Year || "";
+      const quarterRaw = row.Quarter || "";
 
-    function escapeRegExp(str) {
-      return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    }
+      // === Year 節點 ===
+      if (year !== currentYear) {
+        currentYear = year;
+        currentQuarter = null; // 新年，季要重置
 
-    // 簡單切換顯示 block/none
-    function toggleBlock(elem, iconSpan) {
-      if (!elem) return;
-      const isHidden = elem.style.display === "none" || elem.style.display === "";
-      elem.style.display = isHidden ? "block" : "none";
-      if (iconSpan) {
-        iconSpan.textContent = isHidden ? "▼" : "▶";
-      }
-    }
+        const yearNode = document.createElement("div");
+        yearNode.className = "year-node";
 
-    // 依 Year / Quarter 堆疊顯示成樹狀
-    function renderResults(data, keywords) {
-      if (!data || data.length === 0) {
-        resultsContainer.innerHTML =
-          `<div class="empty-message">沒有符合條件的結果。</div>`;
-        return;
-      }
+        const yearHeader = document.createElement("div");
+        yearHeader.className = "tree-header year-header";
 
-      resultsContainer.innerHTML = "";
+        const yearIcon = document.createElement("span");
+        yearIcon.className = "tree-toggle-icon";
+        yearIcon.textContent = "▼"; // 預設展開
 
-      let currentYear = null;
-      let currentYearChildren = null;
+        const yearLabel = document.createElement("span");
+        yearLabel.textContent = year ? String(year) : "(未填 Year)";
 
-      let currentQuarter = null;
-      let currentQuarterChildren = null;
+        yearHeader.appendChild(yearIcon);
+        yearHeader.appendChild(yearLabel);
 
-      data.forEach((row) => {
-        const year = row.Year || "";
-        const quarterRaw = row.Quarter || "";
+        const yearChildren = document.createElement("div");
+        yearChildren.className = "year-children";
+        yearChildren.style.display = "block";
 
-        // === Year 節點 ===
-        if (year !== currentYear) {
-          currentYear = year;
-          currentQuarter = null; // 新年，季要重置
-
-          const yearNode = document.createElement("div");
-          yearNode.className = "year-node";
-
-          const yearHeader = document.createElement("div");
-          yearHeader.className = "tree-header year-header";
-
-          const yearIcon = document.createElement("span");
-          yearIcon.className = "tree-toggle-icon";
-          yearIcon.textContent = "▼"; // 預設展開
-
-          const yearLabel = document.createElement("span");
-          yearLabel.textContent = year ? String(year) : "(未填 Year)";
-
-          yearHeader.appendChild(yearIcon);
-          yearHeader.appendChild(yearLabel);
-
-          const yearChildren = document.createElement("div");
-          yearChildren.className = "year-children";
-          yearChildren.style.display = "block";
-
-          yearHeader.addEventListener("click", () => {
-            toggleBlock(yearChildren, yearIcon);
-          });
-
-          yearNode.appendChild(yearHeader);
-          yearNode.appendChild(yearChildren);
-          resultsContainer.appendChild(yearNode);
-
-          currentYearChildren = yearChildren;
-          currentQuarterChildren = null;
-        }
-
-        // === Quarter 節點 ===
-        if (quarterRaw !== currentQuarter) {
-          currentQuarter = quarterRaw;
-
-          const quarterNode = document.createElement("div");
-          quarterNode.className = "quarter-node";
-
-          const quarterHeader = document.createElement("div");
-          quarterHeader.className = "tree-header quarter-header";
-
-          const qIcon = document.createElement("span");
-          qIcon.className = "tree-toggle-icon";
-          qIcon.textContent = "▼"; // 預設展開
-
-          const qLabel = document.createElement("span");
-          const qStr = String(quarterRaw || "").trim();
-          if (/^\d+$/.test(qStr)) {
-            qLabel.textContent = `Q${qStr}`;
-          } else if (qStr) {
-            qLabel.textContent = qStr;
-          } else {
-            qLabel.textContent = "(未填 Quarter)";
-          }
-
-          quarterHeader.appendChild(qIcon);
-          quarterHeader.appendChild(qLabel);
-
-          const quarterChildren = document.createElement("div");
-          quarterChildren.className = "quarter-children";
-          quarterChildren.style.display = "block";
-
-          quarterHeader.addEventListener("click", () => {
-            toggleBlock(quarterChildren, qIcon);
-          });
-
-          quarterNode.appendChild(quarterHeader);
-          quarterNode.appendChild(quarterChildren);
-
-          if (currentYearChildren) {
-            currentYearChildren.appendChild(quarterNode);
-          } else {
-            resultsContainer.appendChild(quarterNode);
-          }
-
-          currentQuarterChildren = quarterChildren;
-        }
-
-        // === Title 節點 ===
-        const titleItem = document.createElement("div");
-        titleItem.className = "title-item";
-
-        const titleLine = document.createElement("div");
-        titleLine.className = "title-line";
-
-        const titleMain = document.createElement("div");
-        titleMain.className = "title-main";
-        titleMain.innerHTML =
-          row.Title
-            ? highlightText(row.Title, keywords)
-            : "(無標題 Title)";
-
-        const meta = document.createElement("div");
-        meta.className = "title-meta";
-
-        const page = row.Page || "";
-        const sheet = row.Sheet || "";
-
-        meta.innerHTML =
-          `<span>📄 Page ${escapeHtml(page || "?")}</span>` +
-          (sheet ? ` <span>📑 Sheet：${escapeHtml(sheet)}</span>` : "") +
-          (row.Key ? ` <span>🔑 ${highlightText(row.Key, keywords)}</span>` : "");
-
-        titleLine.appendChild(titleMain);
-        titleLine.appendChild(meta);
-
-        const detail = document.createElement("div");
-        detail.className = "title-detail";
-        detail.style.display = "none";
-
-        const detailHtml = `
-          <div class="qa-section-title">Quarter / Year / Page</div>
-          <div class="qa-section-text">
-${escapeHtml(quarterRaw || "")} / ${escapeHtml(year || "")} / ${escapeHtml(page || "")}
-          </div>
-
-          <div class="qa-section-title">Title</div>
-          <div class="qa-section-text">${highlightText(row.Title || "", keywords)}</div>
-
-          <div class="qa-section-title">Question</div>
-          <div class="qa-section-text">${highlightText(row.Question || "", keywords)}</div>
-
-          <div class="qa-section-title">Answer</div>
-          <div class="qa-section-text">${highlightText(row.Answer || "", keywords)}</div>
-
-          <div class="qa-section-title">Note</div>
-          <div class="qa-section-text">${highlightText(row.Note || "", keywords)}</div>
-
-          <div class="qa-section-title">Key</div>
-          <div class="qa-section-text">${highlightText(row.Key || "", keywords)}</div>
-        `;
-        detail.innerHTML = detailHtml;
-
-        // Title 行本身點擊 → 展開/收合詳細內容
-        titleLine.addEventListener("click", () => {
-          toggleBlock(detail, null);
+        yearHeader.addEventListener("click", () => {
+          toggleBlock(yearChildren, yearIcon);
         });
 
-        titleItem.appendChild(titleLine);
-        titleItem.appendChild(detail);
+        yearNode.appendChild(yearHeader);
+        yearNode.appendChild(yearChildren);
+        resultsContainer.appendChild(yearNode);
 
-        if (currentQuarterChildren) {
-          currentQuarterChildren.appendChild(titleItem);
-        } else if (currentYearChildren) {
-          currentYearChildren.appendChild(titleItem);
+        currentYearChildren = yearChildren;
+        currentQuarterChildren = null;
+      }
+
+      // === Quarter 節點 ===
+      if (quarterRaw !== currentQuarter) {
+        currentQuarter = quarterRaw;
+
+        const quarterNode = document.createElement("div");
+        quarterNode.className = "quarter-node";
+
+        const quarterHeader = document.createElement("div");
+        quarterHeader.className = "tree-header quarter-header";
+
+        const qIcon = document.createElement("span");
+        qIcon.className = "tree-toggle-icon";
+        qIcon.textContent = "▼"; // 預設展開
+
+        const qLabel = document.createElement("span");
+        const qStr = String(quarterRaw || "").trim();
+        if (/^\d+$/.test(qStr)) {
+          qLabel.textContent = `Q${qStr}`;
+        } else if (qStr) {
+          qLabel.textContent = qStr;
         } else {
-          resultsContainer.appendChild(titleItem);
+          qLabel.textContent = "(未填 Quarter)";
         }
+
+        quarterHeader.appendChild(qIcon);
+        quarterHeader.appendChild(qLabel);
+
+        const quarterChildren = document.createElement("div");
+        quarterChildren.className = "quarter-children";
+        quarterChildren.style.display = "block";
+
+        quarterHeader.addEventListener("click", () => {
+          toggleBlock(quarterChildren, qIcon);
+        });
+
+        quarterNode.appendChild(quarterHeader);
+        quarterNode.appendChild(quarterChildren);
+
+        if (currentYearChildren) {
+          currentYearChildren.appendChild(quarterNode);
+        } else {
+          resultsContainer.appendChild(quarterNode);
+        }
+
+        currentQuarterChildren = quarterChildren;
+      }
+
+      // === Title 節點 ===
+      const titleItem = document.createElement("div");
+      titleItem.className = "title-item";
+
+      const titleLine = document.createElement("div");
+      titleLine.className = "title-line";
+
+      const titleMain = document.createElement("div");
+      titleMain.className = "title-main";
+      titleMain.innerHTML =
+        row.Title
+          ? highlightText(row.Title, keywords)
+          : "(無標題 Title)";
+
+      const meta = document.createElement("div");
+      meta.className = "title-meta";
+
+      const page = row.Page || "";
+      const sheet = row.Sheet || "";
+
+      meta.innerHTML =
+        `<span>📄 Page ${escapeHtml(page || "?")}</span>` +
+        (sheet ? ` <span>📑 Sheet：${escapeHtml(sheet)}</span>` : "") +
+        (row.Key ? ` <span>🔑 ${highlightText(row.Key, keywords)}</span>` : "");
+
+      titleLine.appendChild(titleMain);
+      titleLine.appendChild(meta);
+
+      const detail = document.createElement("div");
+      detail.className = "title-detail";
+      detail.style.display = "none";
+
+      const detailHtml = `
+        <div class="qa-section-title">Quarter / Year / Page</div>
+        <div class="qa-section-text">
+${escapeHtml(quarterRaw || "")} / ${escapeHtml(year || "")} / ${escapeHtml(page || "")}
+        </div>
+
+        <div class="qa-section-title">Title</div>
+        <div class="qa-section-text">${highlightText(row.Title || "", keywords)}</div>
+
+        <div class="qa-section-title">Question</div>
+        <div class="qa-section-text">${highlightText(row.Question || "", keywords)}</div>
+
+        <div class="qa-section-title">Answer</div>
+        <div class="qa-section-text">${highlightText(row.Answer || "", keywords)}</div>
+
+        <div class="qa-section-title">Note</div>
+        <div class="qa-section-text">${highlightText(row.Note || "", keywords)}</div>
+
+        <div class="qa-section-title">Key</div>
+        <div class="qa-section-text">${highlightText(row.Key || "", keywords)}</div>
+      `;
+      detail.innerHTML = detailHtml;
+
+      // Title 行本身點擊 → 展開/收合詳細內容
+      titleLine.addEventListener("click", () => {
+        toggleBlock(detail, null);
       });
-    }
-  </script>
+
+      titleItem.appendChild(titleLine);
+      titleItem.appendChild(detail);
+
+      if (currentQuarterChildren) {
+        currentQuarterChildren.appendChild(titleItem);
+      } else if (currentYearChildren) {
+        currentYearChildren.appendChild(titleItem);
+      } else {
+        resultsContainer.appendChild(titleItem);
+      }
+    });
+  }
+</script>
+
 </body>
 </html>
 
